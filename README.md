@@ -1,3 +1,3 @@
-# Wifi Scan (wifi-scan)
+# Presence Socket
 
 Checks for the presence of known devices on the local wifi.
