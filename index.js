@@ -1,5 +1,5 @@
 const arpScanner = require('arpscan');
-
+const os = require('os');
 
 var app = require('express')();
 var server = require('http').createServer(app);
@@ -19,6 +19,29 @@ class PresenceTicker
   /**
    * @member {Array.RegisteredClients} registeredClients 
    */
+
+  /**
+   * @typedef {Object} ArpOptions
+   * @property {String} interface the network interface in use
+   */
+
+  /**
+   * @typedef {Object} PresenceTickerOptions
+   * @property {Integer} tick number of mili seconds between ticks
+   * @extends {ArpOptions} the options for the arp-module
+   */
+
+  /**
+   * @member {Object} options the options for the program.
+   */
+
+  /**
+   * @typedef {Object} ArpHostRecord
+   * @property {String}   mac         Host mac address
+   * @property {String}   ip          Host ip address
+   * @property {Integer}  timestamp   Timestamp on generation
+   * @property {String}   vendor      Hosts vendor 
+   */
   
   /**
    * Construct a instance of PresenceTicker.
@@ -27,7 +50,35 @@ class PresenceTicker
    */
   constructor() {
     this.registeredClients = [];
+    this.options = {};
   }
+  
+  /**
+   * Generate a Arp record for this host. The current device.
+   *
+   * @return {ArpHostRecord}
+   */
+  generateSelfHostRecord()
+  {
+    const interfaceName = this.options.interface;
+    const activeInterface = os.networkInterfaces()[interfaceName]
+      .filter(adds => adds.family === 'IPv4')[0];
+
+    const ipAddress = activeInterface.address;
+    const macAddress = activeInterface.mac;
+    const now = Date.now();
+    const vendorName = os.hostname(); // best I can do atm
+    
+    const record = {
+      ip:         ipAddress,
+      mac:        macAddress,
+      vendor:     vendorName,
+      timestamp:  now,
+    };
+    
+    return record;
+  }
+
 
   /**
    * Callback function to be executed on presence tick. 
@@ -67,6 +118,9 @@ class PresenceTicker
       return true;
     });
 
+    // add a host record for this device
+    data.push(this.generateSelfHostRecord());
+
     // sort by ip address
     data = data.sort(function(a, b) {
       const num1 = Number(a.ip.split(".")
@@ -80,6 +134,7 @@ class PresenceTicker
 
       return num1-num2;
     });
+
 
     console.log('presence ticked: ' + new Date()); 
 
@@ -101,6 +156,8 @@ class PresenceTicker
     };
 
     const options = Object.assign({}, defaults, optionsIn);
+
+    this.options = options;
 
     // @todo strip this modules options from the options passed
     // into the aprScanner module
