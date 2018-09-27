@@ -187,6 +187,7 @@ const Socket = {
     const app = express();
     const server = http.createServer(app);
     const io = socketio(server);
+    server.listen(3000);
 
     const presenceTicker = new PresenceTicker();
     presenceTicker.run();
