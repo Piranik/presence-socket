@@ -143,6 +143,23 @@ class PresenceTicker
   }
   
   /**
+   * Handle the arp presence tick.
+   *
+   * @return {void}
+   */
+  tick() 
+  {
+    // don't run given nobody is listening
+    if (
+      !this.registeredClients || 
+      Object.keys(this.registeredClients).length === 0
+    ) return;
+    
+    // run the scanner
+    arpScanner(this.onResult.bind(this), this.options);
+  }
+
+  /**
    * Start the class running.
    *
    * @param {Object} optionsIn options for this module and arp-scan
@@ -160,11 +177,7 @@ class PresenceTicker
     // @todo strip this modules options from the options passed
     // into the aprScanner module
 
-    setInterval(arpScanner.bind(
-      undefined, 
-      this.onResult.bind(this), 
-      options
-    ), options.tick);
+    setInterval(this.tick.bind(this), options.tick);
   }
 }
 
@@ -187,7 +200,7 @@ const Socket = {
     const app = express();
     const server = http.createServer(app);
     const io = socketio(server);
-    server.listen(3000);
+    server.listen(options.port || 3000);
 
     const presenceTicker = new PresenceTicker();
     presenceTicker.run();
@@ -196,10 +209,10 @@ const Socket = {
       presenceTicker.registerListener(client.id, function(payload) {
         client.emit('presenceAll', payload); 
       });
-    });
-
-    io.on('disconnect', function(clinet) {
-      presenceTicket.unregisterListener(client.id);
+      
+      client.on('disconnect', function(clinet) {
+        presenceTicker.unregisterListener(client.id);
+      });
     });
 
   }
