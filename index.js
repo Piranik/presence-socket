@@ -48,7 +48,14 @@ class PresenceTicker
   unregisterListener(id) {
     delete this.registeredClients[id];
   }
-
+  
+  /**
+   * On the result of a arp-scan.
+   *
+   * @param {String}        err    the err message from arp-scan module
+   * @param {Array.Object}  data   the arp records
+   * @return {void}
+   */
   onResult(err, data = [])
   {
     const found = [];
@@ -81,7 +88,12 @@ class PresenceTicker
       i.callback(data);
     };
   }
-
+  
+  /**
+   * Start the class running.
+   *
+   * @param {Object} optionsIn options for this module and arp-scan
+   */
   run(optionsIn) {
     const defaults = {
       tick: 1000,
