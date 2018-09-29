@@ -174,6 +174,9 @@ class PresenceTicker
 
     this.options = options;
 
+    console.log('Starting server with the following optoins: ');
+    console.log(options);
+
     // @todo strip this modules options from the options passed
     // into the aprScanner module
 
@@ -203,7 +206,7 @@ const Socket = {
     server.listen(options.port || 3000);
 
     const presenceTicker = new PresenceTicker();
-    presenceTicker.run();
+    presenceTicker.run(options);
 
     io.on('connection', function(client) {
       presenceTicker.registerListener(client.id, function(payload) {
