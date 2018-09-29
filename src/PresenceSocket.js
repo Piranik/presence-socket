@@ -132,7 +132,9 @@ class PresenceTicker
 
       return num1-num2;
     });
-
+    
+    // make sure the mac address is capitilized
+    data.forEach(i => i.mac = i.mac.toUpperCase());
 
     console.log('presence ticked: ' + new Date()); 
 
