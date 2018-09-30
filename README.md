@@ -3,6 +3,10 @@
 Checks for the presence of known devices on the local wifi.
 
 
+## Todo
+- Execute the records sequentially
+
+
 ## Options
 
 | Option Name | default | Description                      |
@@ -43,7 +47,7 @@ In your clinet, given it is a website
 <script src="/socket.io/socket.io.js"></script>
 <script>
   var socket = io('localhost:3000');
-  
+
   io.on('connection', function(socket){
   	socket.on('presenceAll', function() {
   		// do stuff
@@ -53,3 +57,15 @@ In your clinet, given it is a website
 </script>
 ```
 
+#### Use Programmatically
+If you want to use it without exposing it as a socket,
+you can create a instance of it and listen for events.
+
+```
+const PresenceSocket = require('./src/PresenceSocket');
+const presenceSocket = PresenceSocket.create();
+presenceSocket.on('presenceAll', function(arpHostRecords) {
+  // stuff
+});
+presenceSocket.run(options);
+```

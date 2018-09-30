@@ -1,21 +1,23 @@
 const arpScanner = require('arpscan');
 const os = require('os');
 
-var express = require('express');
-var http = require('http');
-var socketio = require('socket.io');
+const express = require('express');
+const http = require('http');
+const socketio = require('socket.io');
+const EventEmitter = require('events');
 
-class PresenceTicker 
+
+class PresenceTicker extends EventEmitter
 {
-  
+
   /**
-   * @typedef {Object} RegisteredClients 
-   * @property {Integer}  id        Id number 
-   * @property {Function} callback  callback function to emit socket event 
+   * @typedef {Object} RegisteredClients
+   * @property {Integer}  id        Id number
+   * @property {Function} callback  callback function to emit socket event
    */
-  
+
   /**
-   * @member {Array.RegisteredClients} registeredClients 
+   * @member {Array.RegisteredClients} registeredClients
    */
 
   /**
@@ -38,19 +40,34 @@ class PresenceTicker
    * @property {String}   mac         Host mac address
    * @property {String}   ip          Host ip address
    * @property {Integer}  timestamp   Timestamp on generation
-   * @property {String}   vendor      Hosts vendor 
+   * @property {String}   vendor      Hosts vendor
    */
-  
+
   /**
    * Construct a instance of PresenceTicker.
    *
+   * @param {Object} optionsIn options for this module and arp-scan
    * @return {void}
    */
-  constructor() {
-    this.registeredClients = [];
-    this.options = {};
+  constructor(optionsIn)
+  {
+    super();
+    const defaults = {
+      tick: 1000,
+      interface: 'en1',
+    };
+
+    const options = Object.assign({}, defaults, optionsIn);
+
+    this.options = options;
+
+    console.log('Starting server with the following options: ');
+    console.log(options);
+
+    // @todo strip this modules options from the options passed
+    // into the aprScanner module
   }
-  
+
   /**
    * Generate a Arp record for this host. The current device.
    *
@@ -66,38 +83,18 @@ class PresenceTicker
     const macAddress = activeInterface.mac;
     const now = Date.now();
     const vendorName = os.hostname(); // best I can do atm
-    
+
     const record = {
       ip:         ipAddress,
       mac:        macAddress,
       vendor:     vendorName,
       timestamp:  now,
     };
-    
+
     return record;
   }
 
 
-  /**
-   * Callback function to be executed on presence tick. 
-   *
-   * @param {Socket}    idIn  The incomming id  
-   * @param {Function}  func  Callback function to emit a socket event
-   * @return {void}
-   */
-  registerListener(idIn, func) {
-    this.registeredClients[idIn] = {id: idIn, callback: func}; 
-  }
-  
-  /**
-   * Remove a callback function from the registed list.
-   *
-   * @param {Integer} id The id in the registered list to remove
-   */
-  unregisterListener(id) {
-    delete this.registeredClients[id];
-  }
-  
   /**
    * On the result of a arp-scan.
    *
@@ -132,31 +129,25 @@ class PresenceTicker
 
       return num1-num2;
     });
-    
+
     // make sure the mac address is capitilized
     data.forEach(i => i.mac = i.mac.toUpperCase());
 
-    console.log('presence ticked: ' + new Date()); 
+    console.log('presence ticked: ' + new Date());
 
-    for(const key in this.registeredClients) {
-      const i = this.registeredClients[key];
-      i.callback(data);
-    };
+    this.emit('presenceAll', data);
   }
-  
+
   /**
    * Handle the arp presence tick.
    *
    * @return {void}
    */
-  tick() 
+  tick()
   {
     // don't run given nobody is listening
-    if (
-      !this.registeredClients || 
-      Object.keys(this.registeredClients).length === 0
-    ) return;
-    
+    if (this.listenerCount('presenceAll') === 0) return;
+
     // run the scanner
     arpScanner(this.onResult.bind(this), this.options);
   }
@@ -164,25 +155,23 @@ class PresenceTicker
   /**
    * Start the class running.
    *
-   * @param {Object} optionsIn options for this module and arp-scan
+   * @return {void}
    */
-  run(optionsIn) {
-    const defaults = {
-      tick: 1000,
-      interface: 'en1',
-    };
+  run()
+  {
+    arpScanner(function(err, data) {
+      if (err)
+        throw new Error(err);
 
-    const options = Object.assign({}, defaults, optionsIn);
+      if (data === null)
+        throw new Error('Unknown error - null data return');
+    }, this.options)
 
-    this.options = options;
-
-    console.log('Starting server with the following optoins: ');
-    console.log(options);
-
-    // @todo strip this modules options from the options passed
-    // into the aprScanner module
-
-    setInterval(this.tick.bind(this), options.tick);
+    // wait one tick time before starting the tick
+    // allows first arpScanner result to return and program state to be known
+    setTimeout(() => {
+      setInterval(this.tick.bind(this), this.options.tick);
+    }, this.options.tick)
   }
 }
 
@@ -196,35 +185,45 @@ class PresenceTicker
 const Socket = {
 
   /**
+   * Create a instance programmatically.
+   *
+   * @param {Object} options The module options
+   * @return {void}
+   */
+  create: function(options)
+  {
+    return new PresenceTicker(options);
+  },
+
+  /**
    * Run a new socket.
    *
    * @param {Object} options The module options
+   * @return {void}
    */
-  run(options) 
+  run: function(options)
   {
     const app = express();
     const server = http.createServer(app);
     const io = socketio(server);
     server.listen(options.port || 3000);
 
-    const presenceTicker = new PresenceTicker();
-    presenceTicker.run(options);
+    const presenceTicker = new PresenceTicker(options);
+    presenceTicker.run();
 
     io.on('connection', function(client) {
-      presenceTicker.registerListener(client.id, function(payload) {
-        client.emit('presenceAll', payload); 
-      });
-      
+
+      function socketEmit(payload) {
+        client.emit('presenceAll', payload);
+      }
+
+      presenceTicker.on('presenceAll', socketEmit);
+
       client.on('disconnect', function(clinet) {
-        presenceTicker.unregisterListener(client.id);
+        presenceTicker.removeListener('presenceAll', socketEmit);
       });
     });
-
   }
 };
 
 module.exports = Socket;
-
-
-
-
