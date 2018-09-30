@@ -6,19 +6,14 @@ const http = require('http');
 const socketio = require('socket.io');
 const EventEmitter = require('events');
 
-
+/**
+ * Create a ticker for emiting results of arp-scans.
+ *
+ * @author Dale Snowdon <dksnowdon@gmail.com>
+ * @since 0.1.0
+ */
 class PresenceTicker extends EventEmitter
 {
-
-  /**
-   * @typedef {Object} RegisteredClients
-   * @property {Integer}  id        Id number
-   * @property {Function} callback  callback function to emit socket event
-   */
-
-  /**
-   * @member {Array.RegisteredClients} registeredClients
-   */
 
   /**
    * @typedef {Object} ArpOptions
