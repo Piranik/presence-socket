@@ -4,8 +4,7 @@ Checks for the presence of known devices on the local wifi.
 
 
 ## Todo
-- Execute the records sequentially
-
+- Given the arp-scan results return before the tick time amount, wait until
 
 ## Options
 

@@ -1,4 +1,4 @@
-const arpScanner = require('arpscan');
+const arpScanner = require('arpscan/promise');
 const os = require('os');
 
 const express = require('express');
@@ -97,7 +97,7 @@ class PresenceTicker extends EventEmitter
    * @param {Array.Object}  data   the arp records
    * @return {void}
    */
-  onResult(err, data = [])
+  onResult(data = [])
   {
     const found = [];
 
@@ -134,17 +134,40 @@ class PresenceTicker extends EventEmitter
   }
 
   /**
+   * Async generator yielding a sequence of arpscan results.
+   *
+   * @return {Array.ArpHostRecord|false} returns false given voided run
+   */
+  *Ticker()
+  {
+    const tick = this.options.tick;
+    while(true) {
+      // don't run given nobody is listening
+      if (this.listenerCount('presenceAll') === 0)
+        // wait the tick ammount before trying again
+        yield new Promise((res) => setTimeout(() => res(false), tick));
+      else
+        yield arpScanner(this.options);
+    }
+  }
+
+  /**
    * Handle the arp presence tick.
    *
    * @return {void}
    */
-  tick()
+  async startTick()
   {
-    // don't run given nobody is listening
-    if (this.listenerCount('presenceAll') === 0) return;
-
-    // run the scanner
-    arpScanner(this.onResult.bind(this), this.options);
+    const sequence = this.Ticker();
+    for(const result of sequence) {
+      let value;
+      try {
+        value = await result;
+        value && this.onResult(value);
+      } catch(err) {
+        throw new Error(err);
+      }
+    }
   }
 
   /**
@@ -154,19 +177,17 @@ class PresenceTicker extends EventEmitter
    */
   run()
   {
-    arpScanner(function(err, data) {
-      if (err)
-        throw new Error(err);
+    const promise = arpScanner(this.options)
+      .then(function(data) {
+        if (data === null)
+          throw new Error('Unknown error - null data return');
+      }).catch(function(err) {
+        if (err)
+          throw new Error(err);
+      })
 
-      if (data === null)
-        throw new Error('Unknown error - null data return');
-    }, this.options)
-
-    // wait one tick time before starting the tick
-    // allows first arpScanner result to return and program state to be known
-    setTimeout(() => {
-      setInterval(this.tick.bind(this), this.options.tick);
-    }, this.options.tick)
+    // could return promise, to enable consuming script to run shutdown
+    promise.then(() => this.startTick());
   }
 }
 
