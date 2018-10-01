@@ -5,6 +5,7 @@ Checks for the presence of known devices on the local wifi.
 
 ## Todo
 - Given the arp-scan results return before the tick time amount, wait until
+- Remove some bloat from docker file
 
 ## Options
 
@@ -68,3 +69,19 @@ presenceSocket.on('presenceAll', function(arpHostRecords) {
 });
 presenceSocket.run(options);
 ```
+
+#### Using docker daemon
+
+When used as a docker container there is no need to 
+install all the prerequisites
+
+> Note: 
+> The container as is, won't work on mac, only linux.
+
+##### Steps
+
+- Configure the .env.json 
+- Default port exposed by the image is `3001\tcp`
+- Configure any other setup
+- Build image: `docker build -t dksnowdon/presence-socket .`
+- Run as daemon `docker run -dit --network="host" dksnowdon/presence-socket`
