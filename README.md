@@ -1,11 +1,11 @@
 # Presence Socket
 
-Checks for the presence of known devices on the local wifi.
+Checks for the presence of devices wifi.
 
 
 ## Todo
 - Given the arp-scan results return before the tick time amount, wait until
-- Remove some bloat from docker file
+- Remove some bloat from container
 
 ## Options
 
@@ -19,7 +19,7 @@ Checks for the presence of known devices on the local wifi.
 ## Events
 | Event name  | data payload                                                                                                               |
 |-------------|-------------------------------------------------------------------------------------------------------------------------|
-| presenceAll | `{` `   mac: 'aa:aa:aa:aa:aa:aa',` `  ip: '192.168.1.231',` `  vendor: 'Apple inc',` `  timestamp: 1538085785500, ` `}` |
+| presenceAll | `{` `   mac: 'AA:AA:AA:AA:AA:AA',` `  ip: '192.168.1.231',` `  vendor: 'Apple inc',` `  timestamp: 1538085785500, ` `}` |
 
 
 ## Usage
@@ -34,12 +34,18 @@ If you would like to configure the options:
 
 ```
 // yourFile.js
-const PresenceSocket = require('./PresenceSocket');
+const PresenceSocket = require('./src/PresenceSocket');
 const options = { port: 324234, interface: 'en0'};
 PresenceSocket.run(options);
 ```
 
-In your clinet, given it is a website
+You can also use a .env.json file
+
+```cp ./env.example.json env.json```
+
+And configure how you would like
+
+In your client, given it is a website
 
 ```
 //somehtml.html
@@ -58,8 +64,7 @@ In your clinet, given it is a website
 ```
 
 #### Use Programmatically
-If you want to use it without exposing it as a socket,
-you can create a instance of it and listen for events.
+To use without exposing a socket, create a instance of it and listen for events.
 
 ```
 const PresenceSocket = require('./src/PresenceSocket');
@@ -72,11 +77,8 @@ presenceSocket.run(options);
 
 #### Using docker daemon
 
-When used as a docker container there is no need to 
-install all the prerequisites
-
 > Note: 
-> The container as is, won't work on mac, only linux.
+> Steps provided below work on linux only
 
 ##### Steps
 
