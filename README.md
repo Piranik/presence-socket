@@ -4,7 +4,6 @@ Checks for the presence of devices wifi.
 
 
 ## Todo
-- Given the arp-scan results return before the tick time amount, wait until
 - Remove some bloat from container
 
 ## Options

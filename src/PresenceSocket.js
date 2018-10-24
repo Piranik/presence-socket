@@ -5,6 +5,7 @@ const express = require('express');
 const http = require('http');
 const socketio = require('socket.io');
 const EventEmitter = require('events');
+const axios = require('axios');
 
 /**
  * Create a ticker for emiting results of arp-scans.
@@ -22,12 +23,13 @@ class PresenceTicker extends EventEmitter
 
   /**
    * @typedef {Object} PresenceTickerOptions
-   * @property {Integer} tick number of mili seconds between ticks
+   * @property {Integer}  tick            number of mili seconds between ticks
+   * @property {String}   [postEndpoint]  url of api to post to
    * @extends {ArpOptions} the options for the arp-module
    */
 
   /**
-   * @member {Object} options the options for the program.
+   * @member {Object} options the options for the program
    */
 
   /**
@@ -36,6 +38,10 @@ class PresenceTicker extends EventEmitter
    * @property {String}   ip          Host ip address
    * @property {Integer}  timestamp   Timestamp on generation
    * @property {String}   vendor      Hosts vendor
+   */
+
+  /**
+   * @member {Boolean} running  Should the program be running
    */
 
   /**
@@ -56,15 +62,15 @@ class PresenceTicker extends EventEmitter
 
     this.options = options;
 
-    console.log('Starting server with the following options: ');
-    console.log(options);
+    this._log('Starting server with the following options: ');
+    this._log(options);
 
     // @todo strip this modules options from the options passed
     // into the aprScanner module
   }
 
   /**
-   * Generate a Arp record for this host. The current device.
+   * Generate a Arp record for this host, the current device.
    *
    * @return {ArpHostRecord}
    */
@@ -89,12 +95,36 @@ class PresenceTicker extends EventEmitter
     return record;
   }
 
+  /**
+   * Is there a need to run the arp-scan.
+   *
+   * @return {Boolean}
+   */
+  _shouldRunArpScan()
+  {
+    const shouldRunBools = [];
+
+    // has listening events
+    const activeEvents = this.eventNames();
+    const eventsToRemove = [PresenceTicker.EVENTS.FAILED];
+    // remove non user attached events, IE. system life cycle events
+    eventsToRemove.forEach(e => {
+      const index = activeEvents.indexOf(e);
+      if (index >= 0 && index < activeEvents.length) 
+        activeEvents.splice(index, 1)
+    });
+    shouldRunBools.push(Boolean(activeEvents.length));
+
+    // has a POST endpoint to send information to
+    shouldRunBools.push(Boolean(this.options.postEndpoint));
+
+    return shouldRunBools.indexOf(true) != -1;
+  }
 
   /**
    * On the result of a arp-scan.
    *
-   * @param {String}        err    the err message from arp-scan module
-   * @param {Array.Object}  data   the arp records
+   * @param {Array.ArpHostRecord}  data   the arp records
    * @return {void}
    */
   onResult(data = [])
@@ -104,7 +134,7 @@ class PresenceTicker extends EventEmitter
     data = data.filter(function(item) {
       const mac = item.mac;
       if (found[mac]) return false;
-      if(found[mac] == undefined) found[mac] = item;
+      if (found[mac] == undefined) found[mac] = item;
       return true;
     });
 
@@ -128,8 +158,8 @@ class PresenceTicker extends EventEmitter
     // make sure the mac address is capitilized
     data.forEach(i => i.mac = i.mac.toUpperCase());
 
-    console.log('presence ticked: ' + new Date());
-
+    this._log('presence ticked: ' + new Date());
+    
     this.emit('presenceAll', data);
   }
 
@@ -140,14 +170,57 @@ class PresenceTicker extends EventEmitter
    */
   *Ticker()
   {
-    const tick = this.options.tick;
-    while(true) {
-      // don't run given nobody is listening
-      if (this.listenerCount('presenceAll') === 0)
-        // wait the tick ammount before trying again
-        yield new Promise((res) => setTimeout(() => res(false), tick));
-      else
-        yield arpScanner(this.options);
+    const tick = this.options.tick || 1000;
+    let lastStart;
+    let lastEnd;
+
+    while(this.running) {
+      // wait ticker time if theres no need to run main program 
+      if (!this._shouldRunArpScan()) {
+        yield new Promise(r => setTimeout(() => r(), tick));
+        continue;
+      }
+
+      // do the main program
+      // calculate the wait miliseconds, if any (arpscanned in last the a tick)
+      lastStart = Date.now();
+      let waitMiliSecs;
+      if (lastEnd && lastStart) {
+        const tickDiff = lastEnd - lastStart;
+        if (tickDiff < tick) waitMiliSecs = tick - tickDiff;
+      }
+      
+      // create a buffer of wait time or 0
+      const wait = new Promise(r => setTimeout(() => r(), waitMiliSecs || 0));
+      
+      const that = this;
+
+      /**
+       * POST proxy to send the data to a endpoint, if any
+       * @param {Array.ArpHostRecord} data      data to send
+       * @param {String|undefined}    endpoint  endpoint to send to
+       * @return {Array.ArpHostRecord}
+       */
+      function createPostPromise(data, endpoint) {
+        if (endpoint) {
+          return axios.post(endpoint, {json: data})
+            .then(() => data)
+            .catch(e => {
+              // don't end the tick given the endpoint is only temporally down
+              // that.endTick();
+              
+              that._log('Error: postEndpoint failed');
+            });
+        }
+        return Promise.resolve(data);
+      }
+
+      // run wait buffer before the arpscan and arp postback
+      yield wait
+        .then(() => arpScanner(this.options)
+            .then(data => createPostPromise(data, this.options.postEndpoint))
+            // proxy to update internal variable(s) for calculations
+            .then(r => (lastStart = null, lastEnd = Date.now(), r)));
     }
   }
 
@@ -158,6 +231,7 @@ class PresenceTicker extends EventEmitter
    */
   async startTick()
   {
+    this.running = true;
     const sequence = this.Ticker();
     for(const result of sequence) {
       let value;
@@ -165,9 +239,20 @@ class PresenceTicker extends EventEmitter
         value = await result;
         value && this.onResult(value);
       } catch(err) {
-        throw new Error(err);
+        this._log(err.message);
       }
     }
+    
+  }
+  
+  /**
+   * Stop the tick from running, ending the program.
+   *
+   * @return {void}
+   */
+  endTick()
+  {
+    this.running = false;
   }
 
   /**
@@ -178,16 +263,53 @@ class PresenceTicker extends EventEmitter
   run()
   {
     const promise = arpScanner(this.options)
+      .catch(() => {throw new Error('Inital arp scan failed')})
       .then(function(data) {
         if (data === null)
           throw new Error('Unknown error - null data return');
-      }).catch(function(err) {
-        if (err)
-          throw new Error(err);
+      }).catch((err) => {
+        this._log(err.message);
+        return Promise.reject();
       })
 
     // could return promise, to enable consuming script to run shutdown
-    promise.then(() => this.startTick());
+    promise
+      /* @todo resolve a device list from a endpoint */
+      .then(() => this._log('Program started, starting to tick...'))
+      .then(() => this.startTick())
+      .catch(() => {
+        this._log('Boot failed')
+        this.emit(PresenceTicker.EVENTS.FAILED);
+      });
+  }
+  
+  
+  /**
+   * Logging proxy function.
+   *
+   * @private
+   */
+  _log()
+  {
+    console.log(...[...arguments].map(i=> {
+      if (typeof i === 'object') i = JSON.stringify(i, undefined, 2);
+      return this.constructor.name+': '  + i;
+    }));
+  }
+
+
+  /**
+   * Key pair of events mapping to their correct string.
+   *
+   * @typedef {PresenceTicker~EVENTS}
+   * @return {PresenceTicker~EVENTS}
+   */
+  static get EVENTS()
+  {
+    return {
+      PRESENCE_ALL: 'presenceAll',
+      FAILED:       'failed',
+    };
   }
 }
 
@@ -224,19 +346,33 @@ const Socket = {
     const io = socketio(server);
     server.listen(options.port || 3000);
 
+    let socketList = [];
+
     const presenceTicker = new PresenceTicker(options);
     presenceTicker.run();
+    
+    // close the serve on boot failure of presenceTicket instance
+    presenceTicker.on(PresenceTicker.EVENTS.FAILED, function() {
+      socketList.forEach(function(socket) {
+        socket.destroy();
+      });
+      server.close();
+    });
 
     io.on('connection', function(client) {
+      socketList.push(client);
 
       function socketEmit(payload) {
-        client.emit('presenceAll', payload);
+        client.emit(PresenceTicker.EVENTS.PRESENCE_ALL, payload);
       }
 
-      presenceTicker.on('presenceAll', socketEmit);
+      presenceTicker.on(PresenceTicket.EVENTS.PRESENCE_ALL, socketEmit);
 
       client.on('disconnect', function(clinet) {
         presenceTicker.removeListener('presenceAll', socketEmit);
+
+        // clean the socketList when client disconnets
+        socketList.splice(socketlist.indexOf(client), 1);
       });
     });
   }
