@@ -366,13 +366,13 @@ const Socket = {
         client.emit(PresenceTicker.EVENTS.PRESENCE_ALL, payload);
       }
 
-      presenceTicker.on(PresenceTicket.EVENTS.PRESENCE_ALL, socketEmit);
+      presenceTicker.on(PresenceTicker.EVENTS.PRESENCE_ALL, socketEmit);
 
       client.on('disconnect', function(clinet) {
-        presenceTicker.removeListener('presenceAll', socketEmit);
+        presenceTicker.removeListener(PresenceTicker.EVENTS.PRESENCE_ALL, socketEmit);
 
         // clean the socketList when client disconnets
-        socketList.splice(socketlist.indexOf(client), 1);
+        socketList.splice(socketList.indexOf(client), 1);
       });
     });
   }
